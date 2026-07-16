@@ -3,6 +3,7 @@
 const stage = document.getElementById('stage');
 const footer = document.getElementById('footer');
 const enoughBtn = document.getElementById('enough');
+const runhead = document.getElementById('runhead');
 
 const MIN_BREATH = 1600; // ms — a response never lands faster than one visible breath
 
@@ -12,7 +13,22 @@ const state = {
   view: null,
   project: null, // { path, name }
   dirty: false,
+  gist: null, // the running head — what chapter we're in
 };
+
+function setRunhead(text) {
+  if (text) {
+    runhead.textContent = text;
+    runhead.classList.add('visible');
+  } else {
+    runhead.classList.remove('visible');
+  }
+}
+
+function gistOf(s) {
+  const t = String(s).replace(/\s+/g, ' ').trim();
+  return t.length > 64 ? t.slice(0, 63).trimEnd() + '…' : t;
+}
 
 // ---------------------------------------------------------------------------
 // tiny helpers
@@ -210,6 +226,7 @@ function md(src) {
 
 function projectView(recents) {
   state.view = 'project';
+  setRunhead(null);
   footer.classList.remove('visible');
   const scene = h(`
     <div>
@@ -247,6 +264,8 @@ function setProject(path, name, raw) {
 function homeView() {
   state.view = 'home';
   state.session = null;
+  state.gist = null;
+  setRunhead(null);
   footer.classList.remove('visible');
   const scene = h(`
     <div>
@@ -264,6 +283,18 @@ function homeView() {
   scene.querySelector('#switch').addEventListener('click', boot);
   show(scene);
   setTimeout(() => ta.focus(), 1100);
+
+  // the shelf link appears only once there is something to reread
+  fetch('/api/stories')
+    .then((r) => r.json())
+    .then((d) => {
+      if (!d.stories?.length || state.view !== 'home') return;
+      const line = scene.querySelector('.project-line');
+      const link = h('<button class="quiet inline" id="shelf">shelf</button>');
+      link.addEventListener('click', shelfView);
+      line.append('  ·  ', link);
+    })
+    .catch(() => {});
 }
 
 function handleStep(step) {
@@ -412,6 +443,89 @@ function followView() {
   setTimeout(() => ta.focus(), 1100);
 }
 
+function shelfView() {
+  state.view = 'shelf';
+  setRunhead(null);
+  footer.classList.remove('visible');
+  fetch('/api/stories')
+    .then((r) => r.json())
+    .then((d) => {
+      const scene = h(`
+        <div>
+          <p class="label">the shelf</p>
+          <div class="shelf"></div>
+          <button class="quiet" data-v="back">back</button>
+        </div>`);
+      const list = scene.querySelector('.shelf');
+      for (const s of d.stories || []) {
+        const when = s.at
+          ? new Date(s.at).toLocaleDateString(undefined, { month: 'long', day: 'numeric' })
+          : '';
+        const item = h(`
+          <button class="shelf-item">
+            <span class="shelf-title">${esc(s.title)}</span>
+            <span class="shelf-meta">${esc(s.project || '')}${when ? ' · ' + esc(when) : ''}</span>
+          </button>`);
+        item.addEventListener('click', () => storyView(s.id));
+        list.appendChild(item);
+      }
+      scene.querySelector('[data-v="back"]').addEventListener('click', homeView);
+      show(scene, { scroll: (d.stories || []).length > 6 });
+    })
+    .catch(() => errorView('the shelf is unreachable'));
+}
+
+function storyView(id) {
+  state.view = 'story';
+  footer.classList.remove('visible');
+  fetch(`/api/story?id=${encodeURIComponent(id)}`)
+    .then((r) => r.json())
+    .then((d) => {
+      const s = d.story;
+      if (!s) throw new Error('not found');
+      setRunhead(gistOf(s.request));
+      const when = s.startedAt
+        ? new Date(s.startedAt).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
+        : '';
+      const beats = (s.beats || [])
+        .map((b) =>
+          b.q
+            ? `<p class="story-q">— ${esc(b.q)}</p><p class="story-a">${esc(b.a)}</p>`
+            : `<p class="story-a aside">${esc(b.aside || b.a || '')}</p>`
+        )
+        .join('');
+      const reports = (s.reports || [])
+        .map(
+          (r) => `
+          <div class="story-report">
+            ${r.prompt ? `<p class="story-a aside">${esc(r.prompt)}</p>` : ''}
+            ${md(r.text || '')}
+            ${changesBlock(r.changes)}
+            ${r.next ? `<div class="next"><span>next</span><p>${esc(r.next)}</p></div>` : ''}
+          </div>`
+        )
+        .join('');
+      const scene = h(`
+        <div>
+          <article class="story">
+            <p class="folio">${esc(s.projectName || '')}${when ? ' · ' + esc(when) : ''}</p>
+            <h2 class="story-title">${esc(s.request || '')}</h2>
+            ${beats}
+            ${s.summary ? `<p class="story-sum">${esc(s.summary)}</p>` : ''}
+            ${reports}
+          </article>
+          <div class="row">
+            <button class="quiet" data-v="shelf">back to the shelf</button>
+            <button class="quiet" data-v="home">home</button>
+          </div>
+        </div>`);
+      scene.querySelector('[data-v="shelf"]').addEventListener('click', shelfView);
+      scene.querySelector('[data-v="home"]').addEventListener('click', homeView);
+      show(scene, { scroll: true });
+    })
+    .catch(() => errorView('that story could not be opened'));
+}
+
 function errorView(message, retry) {
   state.view = 'error';
   footer.classList.remove('visible');
@@ -446,6 +560,8 @@ async function guarded(fn, retry) {
 
 function start(prompt) {
   guarded(async () => {
+    state.gist = gistOf(prompt);
+    setRunhead(state.gist); // the running head stays with you for the whole chapter
     const d = await breathe(
       api('/api/start', { prompt, project: state.project?.path })
     );
@@ -488,6 +604,7 @@ function followUp(text) {
 }
 
 function done() {
+  setRunhead(null);
   const scene = h('<div></div>');
   show(scene);
   setTimeout(homeView, 1800);

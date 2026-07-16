@@ -27,7 +27,8 @@ const YOLO = process.env.HUSH_YOLO === '1'; // skip all permission checks in the
 
 const HUSH_DIR = path.join(os.homedir(), '.hush');
 const RECENTS = path.join(HUSH_DIR, 'recents.json');
-mkdirSync(HUSH_DIR, { recursive: true });
+const STORIES = path.join(HUSH_DIR, 'stories');
+mkdirSync(STORIES, { recursive: true });
 
 // Bash commands the builder may run without prompting (acceptEdits covers file edits).
 const RUN_TOOLS =
@@ -154,6 +155,32 @@ async function collectChanges(project, before) {
     }
   }
   return changes.slice(0, 14);
+}
+
+// ---------------------------------------------------------------------------
+// Stories — a finished session binds itself into something you can reread.
+// Only sessions that actually built something reach the shelf.
+
+async function persistStory(session) {
+  const s = session.story;
+  if (!s || !s.reports.length) return;
+  try {
+    await writeFile(path.join(STORIES, s.id + '.json'), JSON.stringify(s, null, 2));
+  } catch {}
+}
+
+// track the interview so the story can replay it as dialogue
+function noteStep(session, step) {
+  if (step.kind?.startsWith('ask')) {
+    session.lastQuestion = step.question;
+    return;
+  }
+  session.lastQuestion = null;
+  if (step.kind === 'ready' && session.story) {
+    session.story.summary = step.summary || '';
+    session.story.coach = step.coach || '';
+    session.story.brief = step.refined_prompt || '';
+  }
 }
 
 async function loadRecents() {
@@ -409,11 +436,28 @@ const routes = {
     await saveRecent(project);
 
     const id = crypto.randomUUID();
-    const session = { claudeId: null, asks: 0, busy: false, project, progress: null };
+    const session = {
+      claudeId: null,
+      asks: 0,
+      busy: false,
+      project,
+      progress: null,
+      lastQuestion: null,
+      story: {
+        id,
+        project,
+        projectName: scan.name,
+        request: prompt,
+        startedAt: Date.now(),
+        beats: [],
+        reports: [],
+      },
+    };
     sessions.set(id, session);
 
     const first = `<project-context>\n${scan.context}\n</project-context>\n\nThe user's request: ${prompt}`;
     const step = await elicit(session, first);
+    noteStep(session, step);
     return {
       session: id,
       step,
@@ -425,7 +469,14 @@ const routes = {
     const session = requireSession(body);
     const prompt = body.enough ? 'ENOUGH' : String(body.text || '').trim();
     if (!prompt) throw new Error('empty reply');
+    const shown = body.enough ? 'enough — just answer' : prompt;
+    if (session.story) {
+      session.story.beats.push(
+        session.lastQuestion ? { q: session.lastQuestion, a: shown } : { aside: shown }
+      );
+    }
     const step = await elicit(session, prompt);
+    noteStep(session, step);
     return { step };
   },
 
@@ -435,14 +486,24 @@ const routes = {
     const prompt = note
       ? `One adjustment before you begin: ${note}\n\nNow execute the brief.`
       : 'Execute the brief now.';
-    return build(session, prompt);
+    const result = await build(session, prompt);
+    if (session.story) {
+      session.story.reports.push({ ...result.answer, changes: result.changes, at: Date.now() });
+      await persistStory(session);
+    }
+    return result;
   },
 
   '/api/followup': async (body) => {
     const session = requireSession(body);
     const text = String(body.text || '').trim();
     if (!text) throw new Error('empty follow-up');
-    return build(session, text);
+    const result = await build(session, text);
+    if (session.story) {
+      session.story.reports.push({ ...result.answer, changes: result.changes, at: Date.now(), prompt: text });
+      await persistStory(session);
+    }
+    return result;
   },
 };
 
@@ -528,6 +589,35 @@ const server = http.createServer(async (req, res) => {
         })
         .map((r) => ({ path: r.path, name: path.basename(r.path) }));
       return json(res, 200, { recents });
+    }
+
+    if (url.pathname === '/api/stories') {
+      const list = [];
+      try {
+        for (const f of (await readdir(STORIES)).filter((f) => f.endsWith('.json'))) {
+          try {
+            const s = JSON.parse(await readFile(path.join(STORIES, f), 'utf8'));
+            list.push({
+              id: s.id,
+              title: String(s.request || '').replace(/\s+/g, ' ').slice(0, 72),
+              project: s.projectName,
+              at: s.startedAt,
+            });
+          } catch {}
+        }
+      } catch {}
+      list.sort((a, b) => (b.at || 0) - (a.at || 0));
+      return json(res, 200, { stories: list.slice(0, 50) });
+    }
+
+    if (url.pathname === '/api/story') {
+      const id = (url.searchParams.get('id') || '').replace(/[^a-zA-Z0-9-]/g, '');
+      try {
+        const story = JSON.parse(await readFile(path.join(STORIES, id + '.json'), 'utf8'));
+        return json(res, 200, { story });
+      } catch {
+        return json(res, 404, { error: 'not found' });
+      }
     }
 
     if (url.pathname === '/api/progress') {
