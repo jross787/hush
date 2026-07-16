@@ -1,0 +1,21 @@
+#!/bin/bash
+# hush — start the server if needed, then open a chromeless window.
+set -e
+cd "$(dirname "$0")/.."
+PORT="${HUSH_PORT:-4117}"
+
+if ! curl -s -o /dev/null "http://localhost:$PORT/api/health"; then
+  nohup node server.mjs > /tmp/hush.log 2>&1 &
+  for _ in $(seq 1 20); do
+    curl -s -o /dev/null "http://localhost:$PORT/api/health" && break
+    sleep 0.25
+  done
+fi
+
+# app mode (no browser chrome) if Chrome-family is present; plain browser otherwise
+for APP in "Google Chrome" "Arc" "Microsoft Edge" "Brave Browser"; do
+  if open -Ra "$APP" 2>/dev/null; then
+    exec open -na "$APP" --args --app="http://localhost:$PORT"
+  fi
+done
+exec open "http://localhost:$PORT"

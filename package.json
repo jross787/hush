@@ -1,0 +1,11 @@
+{
+  "name": "hush",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Noise-canceling for Claude. A calm front door that elicits context one small question at a time.",
+  "scripts": {
+    "start": "node server.mjs",
+    "app": "bin/hush"
+  }
+}
