@@ -57,8 +57,10 @@ apply):
 1. **Elicit** — the server scans the project (structure, package scripts,
    git state, recent commits) and injects it as context; an appended system
    prompt turns Claude into a strict-JSON interviewer (`ask_yesno` /
-   `ask_open` / `ready`) that never asks what the scan already answers. Runs
-   on Sonnet for fast, cheap turns. The server enforces the 5-question cap.
+   `ask_open` / `ready`) that never asks what the scan already answers. The
+   interviewer can also read your code (read-only tools are free in headless
+   mode), so briefs arrive grounded in real file paths. Runs on Sonnet for
+   fast, cheap turns. The server enforces the 5-question cap.
 2. **Ready** — Claude returns a summary, a coaching note, and the full build
    brief (inspectable behind a quiet disclosure). If your working tree is
    dirty, hush quietly suggests committing first. You confirm.
@@ -89,5 +91,5 @@ Recent projects are remembered in `~/.hush/recents.json`.
 ## Roadmap
 
 - Global hotkey / menu-bar summon (Raycast script command or Hammerspoon)
-- Let the interviewer read files during elicitation for sharper questions
 - Session history (quiet, opt-in)
+- A quiet way to review the full diff before saying "done"
