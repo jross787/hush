@@ -23,6 +23,28 @@
   }
 }
 
+/* explicit override (?theme=dark|light) — used by pose mode and future toggles */
+:root[data-theme="dark"] {
+  --bg: #161512;
+  --ink: #d8d5cb;
+  --ink-soft: #8f8c81;
+  --ink-faint: #565349;
+  --line: #2e2c26;
+  --hover: #201f1a;
+}
+:root[data-theme="light"] {
+  --bg: #fbfaf7;
+  --ink: #3b3a36;
+  --ink-soft: #8f8c81;
+  --ink-faint: #c3c0b4;
+  --line: #e4e1d8;
+  --hover: #f2efe7;
+}
+:root[data-theme="dark"] .grain { mix-blend-mode: screen; opacity: 0.05; }
+:root[data-theme="light"] .grain { mix-blend-mode: multiply; opacity: 0.035; }
+:root[data-theme="dark"] .fog { background: radial-gradient(circle, rgba(120, 110, 90, 0.08), transparent 65%); }
+:root[data-theme="light"] .fog { background: radial-gradient(circle, rgba(210, 200, 178, 0.16), transparent 65%); }
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 html, body { height: 100%; }
@@ -652,6 +674,12 @@ body {
   transition: opacity 1.2s ease;
 }
 #footer.visible { opacity: 1; pointer-events: auto; }
+
+/* pose mode is a still life — freeze every transition for crisp captures */
+.posed *, .posed *::before, .posed *::after {
+  transition: none !important;
+  animation: none !important;
+}
 
 /* ---- calm for everyone ------------------------------------------------------ */
 

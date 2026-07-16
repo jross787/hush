@@ -2,6 +2,10 @@
 
 **Noise-canceling for Claude. Built for building.**
 
+<p align="center">
+  <img src="docs/home-dark.png" alt="the hush home screen at night — a near-blank earthen page, a single question, and a small cairn of stones in the corner" width="760">
+</p>
+
 A calm front door for coding with Claude Code. Pick a project, type (or
 dictate) what you want built onto a quiet, fuzzy, near-blank screen. Claude
 interviews *you* — one small question at a time, yes/no whenever possible,
@@ -47,6 +51,15 @@ Design principles:
 - **Review before you rest.** Each report carries a collapsed "see the full
   diff" — the whole working-tree diff, typeset quietly — so saying "done"
   can be an informed act, not a leap.
+
+## A walk through
+
+| | |
+|:---:|:---:|
+| <img src="docs/question-light.png" alt="one yes/no question at a time, with the running head above and quiet escape hatches below" width="420"> | <img src="docs/ready-dark.png" alt="the ready screen — what was understood, a coaching note, and one build button" width="420"> |
+| *one question at a time* | *here's what I understood* |
+| <img src="docs/story-light.png" alt="a finished session bound into a story — the interview as dialogue, the report, what changed" width="420"> | <img src="docs/home-dark.png" alt="home, with the cairn of waiting next steps in the corner" width="420"> |
+| *every session becomes a story* | *the cairn holds your next steps* |
 
 ## Run it
 

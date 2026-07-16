@@ -59,6 +59,7 @@ function cairnSVG(n) {
 }
 
 async function updateCairn() {
+  if (state.pose) return; // pose mode stages its own cairn
   try {
     const d = await (await fetch('/api/stones')).json();
     const stones = d.stones || [];
@@ -764,6 +765,41 @@ function goHome() {
 enoughBtn.addEventListener('click', enough);
 wordmark.addEventListener('click', goHome);
 
+// ---------------------------------------------------------------------------
+// pose mode — deterministic staged views for screenshots and previews
+// (?pose=home|question|ready|story, optionally &theme=dark|light)
+
+function pose(which) {
+  state.pose = true;
+  document.documentElement.classList.add('posed'); // still life: no fades, no breathing
+  state.project = { path: '/Users/joe/Code/fried', name: 'fried' };
+  const gist = 'add a csv importer that files bank exports into the ledger';
+  if (which === 'question') {
+    state.gist = gistOf(gist);
+    setRunhead(state.gist);
+    yesNoView({ question: 'Should the importer skip rows it cannot parse, rather than stopping?' });
+  } else if (which === 'ready') {
+    state.gist = gistOf(gist);
+    setRunhead(state.gist);
+    readyView({
+      summary:
+        'A new importer will read the bank’s CSV exports, match each row against the ledger’s account names, and file the entries into the right monthly sheet. Rows it cannot parse are collected and reported at the end rather than stopping the run.',
+      coach:
+        'Saying what should happen to the rows that fail — collect and report, not halt — is what turned this from a script into a tool.',
+      refined_prompt: 'Build a CSV importer at src/import.js that reads exports/*.csv …',
+    });
+  } else if (which === 'story') {
+    storyView('pose-story');
+  } else {
+    homeView();
+    setTimeout(() => {
+      cairn.innerHTML = cairnSVG(4);
+      cairn.classList.add('visible');
+      document.activeElement?.blur();
+    }, 1300);
+  }
+}
+
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     goHome();
@@ -776,4 +812,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'n' || e.key === 'N') reply('no');
 });
 
-boot();
+const params = new URLSearchParams(location.search);
+if (params.get('theme')) document.documentElement.dataset.theme = params.get('theme');
+if (params.get('pose')) pose(params.get('pose'));
+else boot();
