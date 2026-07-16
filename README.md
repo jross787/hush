@@ -1,12 +1,16 @@
 # hush
 
-**Noise-canceling for Claude.**
+**Noise-canceling for Claude. Built for building.**
 
-A calm front door for Claude Code. You type (or dictate) a thought onto a
-quiet, fuzzy, near-blank screen. Claude interviews *you* — one small question
-at a time, yes/no whenever possible — until it has the context it needs. Then
-it runs the real prompt and gives you **one** answer with **one** next step.
-No streaming text, no walls of options, no slot machine.
+A calm front door for coding with Claude Code. Pick a project, type (or
+dictate) what you want built onto a quiet, fuzzy, near-blank screen. Claude
+interviews *you* — one small question at a time, yes/no whenever possible,
+grounded in an automatic scan of your repo — until it has the context it
+needs. Then it builds, for real (reads and edits files, runs tests), while
+the screen shows one slowly-crossfading line of activity. You get back a
+short report: what changed (per-file +/− from git), one command to try it,
+and **one** next step. No streaming text, no walls of options, no slot
+machine.
 
 ## Why
 
@@ -45,20 +49,27 @@ bin/hush
 
 ## How it works
 
-A ~350-line dependency-free Node server shells out to `claude -p` in headless
-mode with `--output-format json`, resuming one conversation per session with
-`--resume <session-id>`:
+A dependency-free Node server shells out to `claude -p` in headless mode,
+resuming one conversation per session with `--resume <session-id>`, with
+`cwd` set to **your project** (so your repo's CLAUDE.md and conventions
+apply):
 
-1. **Elicit** — an appended system prompt turns Claude into a strict-JSON
-   interviewer (`ask_yesno` / `ask_open` / `ready`). Runs on Sonnet for fast,
-   cheap turns. The server enforces the 5-question cap.
-2. **Ready** — Claude returns a summary, a coaching note, and the full
-   refined prompt (inspectable behind a quiet disclosure). You confirm.
-3. **Run** — the same conversation continues under the calm answer contract,
-   on your account's default model, with web search allowed.
-
-Sessions run in an isolated workspace (`~/.hush/workspace`) so they never
-touch your repos' project context.
+1. **Elicit** — the server scans the project (structure, package scripts,
+   git state, recent commits) and injects it as context; an appended system
+   prompt turns Claude into a strict-JSON interviewer (`ask_yesno` /
+   `ask_open` / `ready`) that never asks what the scan already answers. Runs
+   on Sonnet for fast, cheap turns. The server enforces the 5-question cap.
+2. **Ready** — Claude returns a summary, a coaching note, and the full build
+   brief (inspectable behind a quiet disclosure). If your working tree is
+   dirty, hush quietly suggests committing first. You confirm.
+3. **Build** — the same conversation continues on your account's default
+   model with `--output-format stream-json`; tool events become the single
+   crossfading activity line. Permissions default to `acceptEdits` plus an
+   allowlist of common build/test commands (npm, pytest, cargo, go, make,
+   read-only git…). Set `HUSH_YOLO=1` to skip all permission checks instead.
+4. **Report** — the server diffs a before/after git snapshot to show exactly
+   what this run changed, and the calm contract keeps the report under 200
+   words with a single NEXT step.
 
 ## Configuration (env vars)
 
@@ -66,14 +77,17 @@ touch your repos' project context.
 |---|---|---|
 | `HUSH_PORT` | `4117` | server port |
 | `HUSH_ELICIT_MODEL` | `sonnet` | model for interview turns |
-| `HUSH_RUN_MODEL` | account default | model for the final run |
+| `HUSH_RUN_MODEL` | account default | model for the build phase |
 | `HUSH_MAX_QUESTIONS` | `5` | hard cap on interview questions |
-| `HUSH_WORKSPACE` | `~/.hush/workspace` | cwd for claude sessions |
+| `HUSH_RUN_TIMEOUT` | 20 min | build phase timeout (ms) |
+| `HUSH_RUN_TOOLS` | see server.mjs | allowlisted tools for the build |
+| `HUSH_YOLO` | off | `1` = `--dangerously-skip-permissions` |
 | `HUSH_CLAUDE_BIN` | `claude` | path to the claude CLI |
+
+Recent projects are remembered in `~/.hush/recents.json`.
 
 ## Roadmap
 
 - Global hotkey / menu-bar summon (Raycast script command or Hammerspoon)
-- A "project mode" that points the workspace at a repo so the run phase can
-  read code
+- Let the interviewer read files during elicitation for sharper questions
 - Session history (quiet, opt-in)
