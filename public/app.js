@@ -32,6 +32,55 @@ function gistOf(s) {
 }
 
 // ---------------------------------------------------------------------------
+// the cairn — open next-steps stack up like trail stones, quietly
+
+const cairn = (() => {
+  const el = document.createElement('button');
+  el.id = 'cairn';
+  el.type = 'button';
+  document.body.appendChild(el);
+  return el;
+})();
+
+function cairnSVG(n) {
+  const count = Math.min(n, 7);
+  const widths = [58, 50, 43, 36, 30, 24, 19].slice(0, count);
+  const H = 15;
+  const svgH = count * (H - 4) + 14;
+  let cy = svgH - 9;
+  const parts = widths.map((w, i) => {
+    const dx = ((i * 37) % 7) - 3; // settled, not perfectly straight
+    const o = (0.3 + ((i * 13) % 3) * 0.07).toFixed(2);
+    const e = `<ellipse cx="${40 + dx}" cy="${cy}" rx="${w / 2}" ry="${H / 2}" style="opacity:${o}"/>`;
+    cy -= H - 4;
+    return e;
+  });
+  return `<svg width="80" height="${svgH}" viewBox="0 0 80 ${svgH}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${parts.join('')}</svg>`;
+}
+
+async function updateCairn() {
+  try {
+    const d = await (await fetch('/api/stones')).json();
+    const stones = d.stones || [];
+    if (!stones.length || state.view !== 'home') {
+      cairn.classList.remove('visible');
+      return;
+    }
+    cairn.innerHTML = cairnSVG(stones.length);
+    cairn.setAttribute(
+      'aria-label',
+      stones.length === 1 ? 'the cairn — one stone waiting' : `the cairn — ${stones.length} stones waiting`
+    );
+    cairn.title = cairn.getAttribute('aria-label');
+    cairn.classList.add('visible');
+  } catch {
+    cairn.classList.remove('visible');
+  }
+}
+
+cairn.addEventListener('click', () => cairnView());
+
+// ---------------------------------------------------------------------------
 // tiny helpers
 
 function h(html) {
@@ -52,6 +101,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let current = null;
 function show(node, { scroll = false } = {}) {
+  cairn.classList.remove('visible'); // the cairn greets you only at home
   node.classList.add('scene', 'scene-in');
   if (scroll) node.classList.add('scroll');
   const old = current;
@@ -236,8 +286,17 @@ function projectView(recents) {
       <div class="row">
         <textarea class="entry path-entry" rows="1" placeholder="/path/to/project"></textarea>
       </div>
-      <p class="hint">pick a recent project, or type a path and press ⏎</p>
+      <button class="quiet" id="browse">or browse for a folder</button>
+      <p class="hint">pick a recent project, type a path and press ⏎, or browse</p>
     </div>`);
+  scene.querySelector('#browse').addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    try {
+      const d = await api('/api/pickfolder', {});
+      if (d.path) return setProject(d.path);
+    } catch {}
+    e.target.disabled = false;
+  });
   const list = scene.querySelector('.projects');
   for (const r of recents || []) {
     const b = h(`
@@ -284,6 +343,8 @@ function homeView() {
   scene.querySelector('#switch').addEventListener('click', boot);
   show(scene);
   setTimeout(() => ta.focus(), 1100);
+
+  updateCairn();
 
   // the shelf link appears only once there is something to reread
   fetch('/api/stories')
@@ -404,13 +465,14 @@ function changesBlock(changes) {
     </div>`;
 }
 
-function answerView({ answer, changes }) {
+function answerView({ answer, changes, diff }) {
   state.view = 'answer';
   footer.classList.remove('visible');
   const scene = h(`
     <div>
       <article class="answer">${md(answer.text)}</article>
       ${changesBlock(changes)}
+      ${diffBlock(diff)}
       ${answer.next ? `
         <div class="next">
           <span>next</span>
@@ -502,6 +564,7 @@ function storyView(id) {
             ${r.prompt ? `<p class="story-a aside">${esc(r.prompt)}</p>` : ''}
             ${md(r.text || '')}
             ${changesBlock(r.changes)}
+            ${diffBlock(r.diff)}
             ${r.next ? `<div class="next"><span>next</span><p>${esc(r.next)}</p></div>` : ''}
           </div>`
         )
@@ -525,6 +588,68 @@ function storyView(id) {
       show(scene, { scroll: true });
     })
     .catch(() => errorView('that story could not be opened'));
+}
+
+function cairnView() {
+  state.view = 'cairn';
+  setRunhead(null);
+  footer.classList.remove('visible');
+  fetch('/api/stones')
+    .then((r) => r.json())
+    .then((d) => {
+      const stones = d.stones || [];
+      const scene = h(`
+        <div>
+          <p class="label">the cairn</p>
+          <p class="hint">each stone is a next step, waiting quietly</p>
+          <div class="stones"></div>
+          <button class="quiet" data-v="back">back</button>
+        </div>`);
+      const list = scene.querySelector('.stones');
+      if (!stones.length) {
+        list.appendChild(h('<p class="summary">the trail is clear.</p>'));
+      }
+      for (const s of stones.slice().reverse()) {
+        const row = h(`
+          <div class="stone-row">
+            <span class="stone-dot" aria-hidden="true"></span>
+            <div class="stone-body">
+              <span class="stone-title">${esc(s.title)}</span>
+              <span class="stone-next">${esc(s.next)}</span>
+            </div>
+            <div class="stone-actions">
+              <button class="quiet" data-v="open">open</button>
+              <button class="quiet" data-v="done">set it down</button>
+            </div>
+          </div>`);
+        row.querySelector('[data-v="open"]').addEventListener('click', () => storyView(s.id));
+        row.querySelector('[data-v="done"]').addEventListener('click', async () => {
+          try {
+            await api('/api/stone', { id: s.id });
+            row.classList.add('stone-set');
+            setTimeout(() => {
+              row.remove();
+              if (!list.children.length) {
+                list.appendChild(h('<p class="summary">the trail is clear.</p>'));
+              }
+            }, 900);
+          } catch {}
+        });
+        list.appendChild(row);
+      }
+      scene.querySelector('[data-v="back"]').addEventListener('click', homeView);
+      show(scene, { scroll: stones.length > 5 });
+    })
+    .catch(() => errorView('the cairn is unreachable'));
+}
+
+function diffBlock(diff) {
+  if (!diff) return '';
+  return `
+    <details class="prompt-details diff-details">
+      <summary>see the full diff</summary>
+      <pre>${esc(diff)}</pre>
+    </details>`;
 }
 
 function errorView(message, retry) {

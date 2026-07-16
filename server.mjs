@@ -157,6 +157,13 @@ async function collectChanges(project, before) {
   return changes.slice(0, 14);
 }
 
+// the full working-tree diff, for quiet review before saying done
+async function fullDiff(project) {
+  const d = (await git(project, ['diff', 'HEAD'])) ?? (await git(project, ['diff']));
+  if (!d || !d.trim()) return null;
+  return d.length > 60000 ? d.slice(0, 60000) + '\n\n… (truncated)' : d;
+}
+
 // ---------------------------------------------------------------------------
 // Stories — a finished session binds itself into something you can reread.
 // Only sessions that actually built something reach the shelf.
@@ -201,6 +208,7 @@ async function saveRecent(project) {
 // Claude CLI plumbing
 
 const sessions = new Map(); // id -> { claudeId, asks, busy, project, progress }
+let pickingFolder = false;
 
 function cleanEnv() {
   const env = { ...process.env };
@@ -415,7 +423,8 @@ async function build(session, prompt) {
   session.claudeId = claudeId;
   session.progress = null;
   const changes = await collectChanges(session.project, before);
-  return { answer: parseAnswer(text), changes };
+  const diff = changes.length ? await fullDiff(session.project) : null;
+  return { answer: parseAnswer(text), changes, diff };
 }
 
 // ---------------------------------------------------------------------------
@@ -488,7 +497,7 @@ const routes = {
       : 'Execute the brief now.';
     const result = await build(session, prompt);
     if (session.story) {
-      session.story.reports.push({ ...result.answer, changes: result.changes, at: Date.now() });
+      session.story.reports.push({ ...result.answer, changes: result.changes, diff: result.diff, at: Date.now() });
       await persistStory(session);
     }
     return result;
@@ -500,10 +509,39 @@ const routes = {
     if (!text) throw new Error('empty follow-up');
     const result = await build(session, text);
     if (session.story) {
-      session.story.reports.push({ ...result.answer, changes: result.changes, at: Date.now(), prompt: text });
+      session.story.reports.push({ ...result.answer, changes: result.changes, diff: result.diff, at: Date.now(), prompt: text });
       await persistStory(session);
     }
     return result;
+  },
+
+  // native folder picker (macOS) — a real chooser, summoned quietly
+  '/api/pickfolder': async () => {
+    if (pickingFolder) throw Object.assign(new Error('a chooser is already open'), { status: 429 });
+    pickingFolder = true;
+    try {
+      const { stdout } = await execFileP(
+        'osascript',
+        ['-e', 'POSIX path of (choose folder with prompt "where are we building?")'],
+        { timeout: 180000 }
+      );
+      const p = stdout.trim().replace(/\/$/, '');
+      return p ? { path: p } : { canceled: true };
+    } catch {
+      return { canceled: true }; // cancel, timeout, or no osascript — all quiet
+    } finally {
+      pickingFolder = false;
+    }
+  },
+
+  // set a stone down — the story's next step is done
+  '/api/stone': async (body) => {
+    const id = String(body.id || '').replace(/[^a-zA-Z0-9-]/g, '');
+    const file = path.join(STORIES, id + '.json');
+    const story = JSON.parse(await readFile(file, 'utf8'));
+    story.nextDone = true;
+    await writeFile(file, JSON.stringify(story, null, 2));
+    return { ok: true };
   },
 };
 
@@ -608,6 +646,30 @@ const server = http.createServer(async (req, res) => {
       } catch {}
       list.sort((a, b) => (b.at || 0) - (a.at || 0));
       return json(res, 200, { stories: list.slice(0, 50) });
+    }
+
+    if (url.pathname === '/api/stones') {
+      // the cairn: every story whose next step is still waiting
+      const stones = [];
+      try {
+        for (const f of (await readdir(STORIES)).filter((f) => f.endsWith('.json'))) {
+          try {
+            const s = JSON.parse(await readFile(path.join(STORIES, f), 'utf8'));
+            if (s.nextDone) continue;
+            const next = s.reports?.[s.reports.length - 1]?.next;
+            if (!next) continue;
+            stones.push({
+              id: s.id,
+              title: String(s.request || '').replace(/\s+/g, ' ').slice(0, 72),
+              next,
+              project: s.projectName,
+              at: s.startedAt,
+            });
+          } catch {}
+        }
+      } catch {}
+      stones.sort((a, b) => (a.at || 0) - (b.at || 0)); // oldest at the bottom, like a real cairn
+      return json(res, 200, { stones: stones.slice(0, 30) });
     }
 
     if (url.pathname === '/api/story') {
