@@ -39,6 +39,14 @@ Design principles:
   changed — kept on a quiet shelf (`~/.hush/stories/`) you can reread like
   chapters. Report pages are typeset like book pages: ~66-character measure,
   ragged right, first-line paragraph indents.
+- **The cairn.** Every build ends with one next step; the open ones stack
+  into a small pile of stones in the corner of the home screen, the way
+  hikers mark a trail. No badges, no counts, no red — a taller cairn simply
+  means more is waiting. Open a stone to reread its story, or set it down
+  when the step is done.
+- **Review before you rest.** Each report carries a collapsed "see the full
+  diff" — the whole working-tree diff, typeset quietly — so saying "done"
+  can be an informed act, not a leap.
 
 ## Run it
 
