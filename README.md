@@ -19,6 +19,9 @@ caveats, three follow-up questions, all scrolling in at once. That's decision
 fatigue by firehose. hush inverts the flow — the model absorbs the burden of
 deciding what matters, and hands you back the smallest possible surface.
 
+The feeling it aims for: creating software with the calmness of reading a
+paperback in a park. Engaging but not chaotic. A canvas without the noise.
+
 Design principles:
 
 - **One thing on screen at a time.** A question, an answer, or a breath.
@@ -30,6 +33,12 @@ Design principles:
   words. Ends with exactly one smallest next step.
 - **Coaching, quietly.** Before running, hush names the one piece of context
   that most sharpened the plan — so you learn what to include next time.
+- **A book, not a feed.** A faint running head at the top of the page holds
+  your place through the whole session. Finished sessions bind themselves
+  into *stories* — the request, the interview as dialogue, the report, what
+  changed — kept on a quiet shelf (`~/.hush/stories/`) you can reread like
+  chapters. Report pages are typeset like book pages: ~66-character measure,
+  ragged right, first-line paragraph indents.
 
 ## Run it
 
