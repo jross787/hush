@@ -4,6 +4,7 @@ const stage = document.getElementById('stage');
 const footer = document.getElementById('footer');
 const enoughBtn = document.getElementById('enough');
 const runhead = document.getElementById('runhead');
+const wordmark = document.getElementById('wordmark');
 
 const MIN_BREATH = 1600; // ms — a response never lands faster than one visible breath
 
@@ -630,12 +631,17 @@ async function boot() {
 // ---------------------------------------------------------------------------
 // wiring
 
+function goHome() {
+  if (state.busy || state.view === 'home' || state.view === 'project' || state.view === null) return;
+  homeView();
+}
+
 enoughBtn.addEventListener('click', enough);
+wordmark.addEventListener('click', goHome);
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
-    if (state.busy || state.view === 'home' || state.view === 'project' || state.view === null) return;
-    homeView();
+    goHome();
     return;
   }
   if (state.view !== 'yesno' || state.busy) return;
